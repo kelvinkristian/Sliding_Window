@@ -13,23 +13,23 @@ using namespace std;
 int socket_fd;
 struct sockaddr_in server_address, client_address;
 
-void send_ack() {
+void sending_acknowledgement() {
+    // receiving component
     char frame[MAX_FRAME_SIZE];
     char data[MAX_DATA_SIZE];
     char ack[ACK_SIZE];
     int frame_size;
     int data_size;
-    socklen_t client_address_size;
-
     int sequence_number;
     bool frame_error;
     bool eot;
+    socklen_t client_address_size;
 
     // send ack
     while (true) {
         frame_size = recvfrom(socket_fd, (char *)frame, MAX_FRAME_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &client_address_size);
         frame_error = read_frame(&sequence_number, data, &data_size, &eot, frame);
-        create_ack(sequence_number, ack, frame_error);
+        create_ack(ack, sequence_number, frame_error);
         sendto(socket_fd, ack, ACK_SIZE, 0, (const struct sockaddr *) &client_address, client_address_size);
     }
 }
@@ -114,7 +114,7 @@ int main(int argc, char * argv[]) {
             frame_size = recvfrom(socket_fd, (char *) frame, MAX_FRAME_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &client_address_size);
             frame_error = read_frame(&sequence_count, receive_data, &receive_data_size, &eot, frame)
 
-            create_ack(sequence_number, ack, frame_error);
+            create_ack(ack, sequence_number, frame_error);
             sendto(socket_fd, ack, ACK_SIZE, 0, (const struct sockaddr *) &client_address, client_address_size);
 
             if (sequence_number <= laf) {
@@ -160,9 +160,9 @@ int main(int argc, char * argv[]) {
         
     }
     
-    fclose(file);
+    fclose(file_name);
 
-    thread waiting_thread(send_ack);
+    thread waiting_thread(sending_acknowledgement);
     time_stamp start_time = current_time();
     while (elapsed_time(current_time(), start_time) < WAITING_TIME) {
         cout << "\r" << "[STANDBY TO SEND ACK FOR 3 SECONDS | ]" << flush;

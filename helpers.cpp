@@ -27,7 +27,7 @@ int create_frame(int seq_num, char *frame, char *data, int data_size, bool eot) 
     return data_size + (int)10;
 }
 
-void create_ack(int seq_num, char *ack, bool error) {
+void create_ack(char *ack, int seq_num, bool error) {
     ack[0] = error ? 0x0 : 0x1;
     uint32_t net_seq_num = htonl(seq_num);
     memcpy(ack + 1, &net_seq_num, 4);
