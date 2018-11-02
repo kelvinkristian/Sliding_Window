@@ -10,6 +10,7 @@
 #define MAX_DATA_SIZE 1024
 #define MAX_FRAME_SIZE 1034
 #define ACK_SIZE 6
+#define CLARIFYING_TIME 5000
 
 #define current_time chrono::high_resolution_clock::now
 #define time_stamp chrono::high_resolution_clock::time_point
