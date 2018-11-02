@@ -37,6 +37,37 @@ void initiating_socket (struct sockaddr_in &server_address,
     }
 }
 
+void create_ack(int seq_num, char *ack, bool error) {
+    if (error) {
+        ack[0] = 0x0;
+    } else {
+        ack[0] = 0x1;
+    }
+    uint32_t net_seq_num = htonl(seq_num);
+    memcpy(ack + 1, &net_seq_num, 4);
+    ack[5] = checksum(ack, ACK_SIZE - (int) 1);
+}
+
+bool read_frame(int *seq_num, char *data, int *data_size, bool *eot, char *frame) {
+    if (frame[0] == 0x0) {
+        *eot = true;
+    } else {
+        *eot = false;
+    }
+
+    uint32_t net_seq_num;
+    memcpy(&net_seq_num, frame + 1, 4);
+    *seq_num = ntohl(net_seq_num);
+
+    uint32_t net_data_size;
+    memcpy(&net_data_size, frame + 5, 4);
+    *data_size = ntohl(net_data_size);
+
+    memcpy(data, frame + 9, *data_size);
+
+    return frame[*data_size + 9] != checksum(frame, *data_size + (int) 9);
+}
+
 void send_ack() {
     // receiving frame component
     char frame[MAX_FRAME_SIZE];
@@ -64,9 +95,9 @@ void final_checker() {
     time_stamp start = current_time();
 
     while (elapsed_time(current_time(), start) < CLARIFYING_TIME) {
-        cout << "\r" << "CLRAIFYING  " << flush;
+        cout << "\r" << "CLARIFYING  " << flush;
         sleep_for(700);
-        cout << "\r" << "CLRAIFYING ? " << flush;
+        cout << "\r" << "CLARIFYING ? " << flush;
         sleep_for(700);
         
     }
@@ -184,7 +215,7 @@ int main(int argc, char * argv[]) {
 
 
         cout << "\r" << "RECEIVING :" << (unsigned long long) buff_counter * (unsigned long long) 
-            max_buff_size + (unsigned long long) buff_size << " BYTES" << flush;
+            max_buff_size + (unsigned long long) buff_size << " BYTES";
         
         fwrite(buff, 1, buff_size, file);
         buff_counter += 1;
