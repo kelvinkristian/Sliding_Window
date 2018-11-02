@@ -74,7 +74,7 @@ int main(int argc, char * argv[]) {
 
     // define buffer size
     FILE *file = fopen(file_name, "wb");
-    chat buffer[max_buffer_size];
+    char buffer[max_buffer_size];
     int buffer_size;
 
     // sliding window preparation
@@ -94,6 +94,7 @@ int main(int argc, char * argv[]) {
 
     // receive frames 
     bool receiving_done = false;
+    int buffer_num = 0;
     while (!receiving_done) {
         buffer_size = max_buffer_size;
         memset(buffer, 0, buffer_size);
@@ -112,7 +113,7 @@ int main(int argc, char * argv[]) {
         while (true) {
             socklen_t client_address_size;
             frame_size = recvfrom(socket_fd, (char *) frame, MAX_FRAME_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &client_address_size);
-            frame_error = read_frame(&sequence_count, receive_data, &receive_data_size, &eot, frame)
+            frame_error = read_frame(&sequence_count, data, &data_size, &eot, frame);
 
             create_ack(ack, sequence_number, frame_error);
             sendto(socket_fd, ack, ACK_SIZE, 0, (const struct sockaddr *) &client_address, client_address_size);
@@ -157,10 +158,10 @@ int main(int argc, char * argv[]) {
         }
         cout << "\r" << "[Received " << (unsigned long long) buffer_num * (unsigned long long) max_buffer_size + (unsigned long long) buffer_size << " BYTES]" << flush;
         fwrite(buffer, 1, buffer_size, file);
-        
+        buffer_num += 1;
     }
     
-    fclose(file_name);
+    fclose(file);
 
     thread waiting_thread(sending_acknowledgement);
     time_stamp start_time = current_time();
