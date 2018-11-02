@@ -111,15 +111,21 @@ int main(int argc, char *argv[]) {
     int buffer_num = 0;
     while (!read) {
 
-        /* Read part of file to buffer */
-        buffer_size = fread(buffer, 1, max_buffer_size, file);
-        if (buffer_size == max_buffer_size) {
-            char temp[1];
-            int next_buffer_size = fread(temp, 1, 1, file);
-            if (next_buffer_size == 0) read = true;
-            int error = fseek(file, -1, SEEK_CUR);
-        } else if (buffer_size < max_buffer_size) {
+        //Baca file ke buffer yang tersedia(per 1 byte * max_buffer_size)
+        buffer_size = fread(buffer,1,max_buffer_size,file);
+        if(buffer_size < max_buffer_size){
             read = true;
+        }else if(buffer_size == max_buffer_size){
+            //variabel temporer untuk checking
+            char x[1];
+            int temp;
+
+            //cek file apakah masih ada setelah membaca sebanyak max_buffer_size
+            if((temp = fread(x,1,1,file)) == 0){
+                read = true;
+            }
+            //mundurkan pointer pada file sebesar offset:-1
+            temp = fseek(file,-1,SEEK_CUR);
         }
         
         int seqnum,seqcount;
@@ -134,74 +140,91 @@ int main(int argc, char *argv[]) {
         win_ack_received = new bool[window_size];
         bool win_is_sent[window_size];
 
-        for (int i = 0; i < window_size; i++) {
-            win_ack_received[i] = false;
-            win_is_sent[i] = false;
-        }
+        //assign semua arr bool menjadi false
+        memset(win_ack_received,false,sizeof(win_ack_received));        
+        memset(win_is_sent,false,sizeof(win_is_sent));
+
         lar = UNDEFINED;
         lfs = lar + window_size;
 
         win_mutex.unlock();
-        
-        /* Send current buffer with sliding window */
+
+        //Send data ke server
+
+        //inisialisasi sent = false
         sent = false;
+        
         while (!sent) {
 
             win_mutex.lock();
-
-            /* Check window ack mask, shift window if possible */
-            if (win_ack_received[0]) {
+            //Shift variabel jika terdapat ACK
+            if(win_ack_received[0]){
+                
+                //init shift = 1, karena ack pertama sudah didapatkan
                 int shift = 1;
-                for (int i = 1; i < window_size; i++) {
-                    if (!win_ack_received[i]) break;
-                    shift += 1;
+                int i = 1;
+                
+                //cek berapa banyak yang sudah ACK dari elemen kedua hingga LFS
+                while((i < window_size) && win_ack_received[i]){
+                    shift++;
+                    i++;
                 }
-                for (int i = 0; i < window_size - shift; i++) {
-                    win_is_sent[i] = win_is_sent[i + shift];
-                    win_ack_received[i] = win_ack_received[i + shift];
-                    win_time_sent[i] = win_time_sent[i + shift];
+                //assign mask dan stamp dari window sesuai dengan pergeseran
+                for(i = 0; i < window_size-shift; i++){
+                    win_ack_received[i] = win_ack_received[i+shift];
+                    win_time_sent[i] = win_time_sent[i+shift];
+                    win_is_sent[i] = win_is_sent[i+shift];
                 }
-                for (int i = window_size - shift; i < window_size; i++) {
-                    win_is_sent[i] = false;
-                    win_ack_received[i] = false;
-                }
+                //assign mask frame yang akan masuk ke window dengan false
+                memset(win_ack_received+(window_size-shift),false,shift);
+                memset(win_is_sent+(window_size-shift),false,shift);
+
+                //geser LAR sebesar shift dan update LFS
                 lar += shift;
                 lfs = lar + window_size;
-            }
 
+            }
             win_mutex.unlock();
 
-            /* Send frames that has not been sent or has timed out */
-            for (int i = 0; i < window_size; i ++) {
-                seqnum = lar + i + 1;
+            //Kirim frame 
+            int shift_size;
+            for(int i = 0; i < window_size; i++){
+                
+                //inisialisasi seqnum
+                seqnum = (lar + 1) + i;
 
-                if (seqnum < seqcount) {
+                if(seqnum < seqcount){
+
                     win_mutex.lock();
-
-                    if (!win_is_sent[i] || (!win_ack_received[i] && (elapsed_time(current_time(), win_time_sent[i]) > TIMEOUT))) {
-                        int buffer_shift = seqnum * MAX_DATA_SIZE;
-                        data_size = (buffer_size - buffer_shift < MAX_DATA_SIZE) ? (buffer_size - buffer_shift) : MAX_DATA_SIZE;
-                        memcpy(data, buffer + buffer_shift, data_size);
+                    if(!win_is_sent[i] || (elapsed_time(current_time(), win_time_sent[i])) > TIMEOUT){
                         
+                        shift_size = seqnum * MAX_DATA_SIZE;
+                        data_size = (buffer_size - shift_size < MAX_DATA_SIZE) ? (buffer_size - shift_size) : MAX_DATA_SIZE;
+                        memcpy(data,(buffer + buffer_size),data_size);
                         bool eot = (seqnum == seqcount - 1) && (read);
                         frame_size = create_frame(seqnum, frame, data, data_size, eot);
-
-                        sendto(sock_fd, frame, frame_size, 0, 
-                                (const struct sockaddr *) &server_address, sizeof(server_address));
+                        sendto(sock_fd,frame,frame_size,0,(const struct sockaddr *)&server_address,sizeof(server_address));
                         win_is_sent[i] = true;
                         win_time_sent[i] = current_time();
-                    }
 
+                    }
                     win_mutex.unlock();
+
                 }
+
+
             }
 
+            bool eot = (seqnum == seqcount - 1) && (read);
+            frame_size = create_frame(seqnum, frame, data, data_size, eot);
+
             /* Move to next buffer if all frames in current buffer has been acked */
-            if (lar >= seqcount - 1) sent = true;
+            if (lar >= seqcount - 1){
+                sent = true;
+            }
         }
 
-        cout << "\r" << "[SENT " << (unsigned long long) buffer_num * (unsigned long long) 
-                max_buffer_size + (unsigned long long) buffer_size << " BYTES]" << flush;
+        cout << "\r" << "SENDING: " << (unsigned long long) buffer_num * (unsigned long long) max_buffer_size + (unsigned long long) buffer_size << " Bytes" << flush;
         buffer_num += 1;
         if (read) break;
     }
@@ -210,8 +233,7 @@ int main(int argc, char *argv[]) {
     delete [] win_ack_received;
     delete [] win_time_sent;
     receive_ack.detach();
-
-    cout << "\nAll done :)" << endl;
+    cout << endl << "The file \"" << filename << "\" has been successfully sent!" << endl;
     return 0;
 }
 

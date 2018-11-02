@@ -213,8 +213,7 @@ int main(int argc, char * argv[]) {
         }
 
 
-        cout << "\r" << "RECEIVING :" << (unsigned long long) buff_counter * (unsigned long long) 
-            max_buff_size + (unsigned long long) buff_size << " BYTES";
+        cout << "\r" << "RECEIVING :" << (unsigned long long) buff_counter * (unsigned long long) max_buff_size + (unsigned long long) buff_size << " Bytes";
         
         fwrite(buff, 1, buff_size, file);
         buff_counter += 1;
@@ -224,7 +223,9 @@ int main(int argc, char * argv[]) {
     //in case the last ack is not received by the sender
     final_checker();
 
-    cout << "\ndone" << endl;
+    cout << endl << "The received data has been written to: \"" << file_name << "\"" << endl;
+
+
     return 0;
 }
 
