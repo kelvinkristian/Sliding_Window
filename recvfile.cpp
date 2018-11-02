@@ -5,9 +5,8 @@
 #include <sys/socket.h>
 #include <netdb.h>
 
-#include "helpers.h"
+#include "definitions.h"
 
-#define CLARIFYING_TIME 5000
 
 using namespace std;
 
