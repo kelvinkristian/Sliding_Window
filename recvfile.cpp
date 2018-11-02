@@ -13,6 +13,27 @@ using namespace std;
 int socket_fd;
 struct sockaddr_in server_address, client_address;
 
+void send_ack() {
+    char frame[MAX_FRAME_SIZE];
+    char data[MAX_DATA_SIZE];
+    char ack[ACK_SIZE];
+    int frame_size;
+    int data_size;
+    socklen_t client_address_size;
+
+    int sequence_number;
+    bool frame_error;
+    bool eot;
+
+    // send ack
+    while (true) {
+        frame_size = recvfrom(socket_fd, (char *)frame, MAX_FRAME_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &client_address_size);
+        frame_error = read_frame(&sequence_number, data, &data_size, &eot, frame);
+        create_ack(sequence_number, ack, frame_error);
+        sendto(socket_fd, ack, ACK_SIZE, 0, (const struct sockaddr *) &client_address, client_address_size);
+    }
+}
+
 int main(int argc, char * argv[]) {
     int port;
     int window_size;
@@ -58,16 +79,16 @@ int main(int argc, char * argv[]) {
 
     // sliding window preparation
         // receiver component
-    char receive_frame[MAX_FRAME_SIZE];
-    char receive_data[MAX_DATA_SIZE];
-    int receive_frame_size;
-    int receive_data_size;
+    char frame[MAX_FRAME_SIZE];
+    char data[MAX_DATA_SIZE];
+    int frame_size;
+    int data_size;
     bool frame_error;
         // ack component
     char ack[ACK_SIZE];
         // receiver pointer
     int lfr, laf;
-    int recv_seq_num;
+    int sequence_number;
         // extension
     bool eot;
 
@@ -91,13 +112,65 @@ int main(int argc, char * argv[]) {
         while (true) {
             socklen_t client_address_size;
             frame_size = recvfrom(socket_fd, (char *) frame, MAX_FRAME_SIZE, MSG_WAITALL, (struct sockaddr *) &client_address, &client_address_size);
-            frame_error = read_frame(&sequence_count, receive_data, &receive_data_size, &eot, receive_frame)
+            frame_error = read_frame(&sequence_count, receive_data, &receive_data_size, &eot, frame)
 
+            create_ack(sequence_number, ack, frame_error);
+            sendto(socket_fd, ack, ACK_SIZE, 0, (const struct sockaddr *) &client_address, client_address_size);
 
+            if (sequence_number <= laf) {
+                if (!frame_error) {
+                    int buffer_shift = sequence_number * MAX_DATA_SIZE;
+
+                    if (sequence_number == lfr + 1) {
+                        memcpy(buffer + buffer_shift, data, data_size);
+
+                        int shift = 1;
+                        for (int i = 1; i < window_size; i++) {
+                            if (!already_receive_window[i]) {
+                                break;
+                            }
+                            shift += 1;
+                        }
+                        for (int i = 0; i < window_size; i++) {
+                            if (i < window_size - shift) {
+                                already_receive_window[i] = already_receive_window[i + shift];  
+                            } else if (i >= (window_size - shift)) {
+                                already_receive_window[i] = false;
+                            }
+                        }
+                        lfr += shift;
+                        laf = lfr + window_size;
+                    } else if (sequence_number > lfr + 1) {
+                        if (!already_receive_window[sequence_number - (lfr + 1)]) {
+                            memcpy(buffer + buffer_shift, data, data_size);
+                            already_receive_window[sequence_number - (lfr + 1)] = true;
+                        }
+                    }
+
+                    if (eot) {
+                        buffer_size = buffer_shift + data_size;
+                        sequence_count = sequence_number + 1;
+                        receiving_done = true;
+                    }
+                }
+            }
         }
+        cout << "\r" << "[Received " << (unsigned long long) buffer_num * (unsigned long long) max_buffer_size + (unsigned long long) buffer_size << " BYTES]" << flush;
+        fwrite(buffer, 1, buffer_size, file);
         
     }
     
+    fclose(file);
 
+    thread waiting_thread(send_ack);
+    time_stamp start_time = current_time();
+    while (elapsed_time(current_time(), start_time) < WAITING_TIME) {
+        cout << "\r" << "[STANDBY TO SEND ACK FOR 3 SECONDS | ]" << flush;
+        sleep_for(100);
+    }
+    waiting_thread.detach();
+    
+
+    cout << "done \n";
     return 0;
 }
