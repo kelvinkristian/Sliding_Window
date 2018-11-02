@@ -6,22 +6,13 @@ In the sliding window technique, each data packet and byte includes a unique con
 
 Sliding window is also known as windowing.
 
-## Overview
-- [Background](#background)
-- [Visualization for Sliding Window Protocol](#visualization-for-sliding-window-protocol)
-- [Implementation](#implementation)
-- [How to Use](#how-to-use)
-- [Simulating Packet Loss](#simulating-packet-loss)
-- [Contributors](#contributors)
-- [References](#references)
-
 ## Background
 This project exists in order to accomplish our computer networks class task. Beside that we also want to explore about this topic, as we know that communication between computer is the base of everyone need, internet.
 
 ## Visualization for Sliding Window Protocol
 <img src="visualization.gif">
 
-We implemented the Sliding Window Protocol using Selective Repeat Protocol that requires the receiver to receive out of order data. Because of this requirement, the receiver must be able to buffer the packets. This protocol retransmits the data under 2 condition:
+This Sliding Window Protocol is implemented using Selective Repeat Protocol that needs the receiver to receive out of order data. As a result, the receiver must be able to buffer the packets. This protocol retransmits the data under two conditions:
 1. The receiver never received the packet, or the packet is recieved but the Acknowlendgement (ACK) of that packet never reaches the sender. We assume that the packet or the ACK is lost in transmission, hence the sender retransmits the packet after a timeout.
 2. The receiver received the packet, but the packet is invalid because it has a wrong checksum. Then the receiver sends a Negative Acknowledgement (NAK) to notify the sender to begin retransmission immediately.
 
