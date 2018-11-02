@@ -1,22 +1,26 @@
+#include <sys/socket.h>
+#include <unistd.h>
 #include <iostream>
 #include <stdio.h>
-#include <unistd.h>
-#include <sys/socket.h>
 #include <netdb.h>
 #include <thread>
 #include <mutex>
 #include "helpers.h"
+
+//MACRO
+#define UNDEFINED -1
 #define TIMEOUT 10
 #define SOH 0x1
 
 using namespace std;
 
 //Variabel global
-int sock_fd,window_size,lar,lfs;
 struct sockaddr_in server_address, client_address;
-bool* win_ack_recieved;
-time_stamp *win_time_sent;
+int sock_fd,window_size,lar,lfs;
 time_stamp Curr = now_time();
+time_stamp *win_time_sent;
+bool *win_ack_recieved;
+bool *win_is_sent;
 mutex win_mutex;
 
 //Fungsi untuk mendengar ACK
@@ -44,11 +48,11 @@ void listen_to_ack(){
 }
 
 int main(int argc, char const *argv[]){
-    int destination_port,max_buffer_size;
+    int destination_port,max_buffer_size,shift;
+    struct hostent *destination_hostent;
     const char *destination_ip;
     const char *filename;
-    struct hostent *destination_hostent;
-    bool read;
+    bool read,sent;
 
     //Inisialisasi server dan client address dengan 0
     memset(&server_address, 0, sizeof(server_address));
@@ -71,11 +75,11 @@ int main(int argc, char const *argv[]){
         perror("usage : ./sendfile <filename> <windowsize> <buffersize> <destination_ip> <destination_port>");
         return 1;
     }else{ //Masukkan data argumen ke variabel
-        filename = argv[1];
-        window_size = atoi(argv[2]);
-        max_buffer_size = atoi(argv[3]) * MAX_DATA_SIZE;
-        destination_ip = argv[4];
-        destination_port = atoi(argv[5]);
+        filename            = argv[1];
+        window_size         = atoi(argv[2]);
+        max_buffer_size     = atoi(argv[3]) * MAX_DATA_SIZE;
+        destination_ip      = argv[4];
+        destination_port    = atoi(argv[5]);
     }
 
     //Pencarian host
@@ -90,6 +94,7 @@ int main(int argc, char const *argv[]){
     server_address.sin_family = AF_INET;
     bcopy(destination_hostent->h_addr,(char *) &server_address.sin_addr, destination_hostent->h_length);
     server_address.sin_port = htons(destination_port);
+    
     /*assign atribut client address*/
     client_address.sin_family = AF_INET;
     client_address.sin_addr.s_addr = INADDR_ANY;
@@ -123,6 +128,88 @@ int main(int argc, char const *argv[]){
     //Looping hingga seluruh file selesai dikirim
     while(!read){
         
+        //Inisialisasi frame sliding window
+        int seqnum,seqcount;
+
+        win_mutex.lock();
+        //inisialisasi seqcount
+        seqcount = (buffer_size/MAX_DATA_SIZE) + (buffer_size%MAX_DATA_SIZE != 0) ? 1 : 0; 
+
+        //inisialisasi mask pada window
+        win_time_sent = new time_stamp[window_size];
+        win_ack_recieved = new bool[window_size];
+        win_is_sent = new bool[window_size];
+
+        //assign semua arr bool menjadi false
+        memset(win_ack_recieved,false,sizeof(win_ack_recieved));        
+        memset(win_is_sent,false,sizeof(win_is_sent));
+
+        //inisialisasi LAR dan LFS untuk sender
+        lar = UNDEFINED;
+        lfs = lar + window_size;
+        
+        win_mutex.unlock();
+
+
+        //Baca file ke buffer yang tersedia(per 1 byte * max_buffer_size)
+        buffer_size = fread(buffer,1,max_buffer_size,myfile);
+        if(buffer_size < max_buffer_size){
+            read = true;
+        }else if(buffer_size == max_buffer_size){
+            //variabel temporer untuk checking
+            char x[1];
+            int temp;
+
+            //cek file apakah masih ada setelah membaca sebanyak max_buffer_size
+            if((temp = fread(x,1,1,myfile)) == 0){
+                read = true;
+            }
+            //mundurkan pointer pada file sebesar offset:-1
+            temp = fseek(myfile,-1,SEEK_CUR);
+        }
+
+        //Send data ke server
+
+        //inisialisasi sent = false
+        sent = false;
+
+        while(!sent){
+            
+            win_mutex.lock();
+            //Shift variabel jika terdapat ACK
+            if(win_ack_recieved[0]){
+                
+                //init shift = 1, karena ack pertama sudah didapatkan
+                shift = 1;
+                int i = 1;
+                
+                //cek berapa banyak yang sudah ACK dari elemen kedua
+                while((i < window_size) && win_ack_recieved[i]){
+                    shift++;
+                    i++;
+                }
+                //assign mask dan stamp dari window sesuai dengan pergeseran
+                for(i = 0; i < window_size-shift; i++){
+                    win_ack_recieved[i] = win_ack_recieved[i+shift];
+                    win_time_sent[i] = win_time_sent[i+shift];
+                    win_is_sent[i] = win_is_sent[i+shift];
+                }
+                //assign mask frame yang akan masuk ke window dengan false
+                memset(win_ack_recieved+(window_size-shift),false,shift);
+                memset(win_is_sent+(window_size-shift),false,shift);
+
+                //geser LAR sebesar shift dan update LFS
+                lar += shift;
+                lfs = lar + window_size;
+
+            }
+            win_mutex.unlock();
+
+            //TODO sendframe
+
+        }
+
+
     }
 
 
