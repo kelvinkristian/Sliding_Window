@@ -51,6 +51,9 @@ bool read_frame(int *seq_num, char *data, int *data_size, bool *eot, char *frame
 }
 
 bool read_ack(int *seq_num, bool *neg, char *ack) {
+    //!important
+    
+    //TODO ubah ke: jika error 0x15:negative_ack, 0x06:positive_ack 
     *neg = ack[0] == 0x0 ? true : false;
 
     uint32_t net_seq_num;
